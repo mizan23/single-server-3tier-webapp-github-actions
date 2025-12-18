@@ -110,19 +110,19 @@ jobs:
               echo "📦 Creating database and user..."
               
               # Create user and database
-              sudo -u postgres psql << PSQL
-                DO \$\$
+              sudo -u postgres psql << 'PSQL'
+                DO $$
                 BEGIN
                   IF NOT EXISTS (SELECT FROM pg_user WHERE usename = '${{ env.DB_USER }}') THEN
                     CREATE USER ${{ env.DB_USER }} WITH PASSWORD '${{ secrets.DB_PASSWORD }}';
                   END IF;
                 END
-                \$\$;
+                $$;
                 
                 CREATE DATABASE ${{ env.DB_NAME }} OWNER ${{ env.DB_USER }};
                 GRANT ALL PRIVILEGES ON DATABASE ${{ env.DB_NAME }} TO ${{ env.DB_USER }};
                 ALTER USER ${{ env.DB_USER }} CREATEDB;
-PSQL
+              PSQL
               
               echo "✅ Database created successfully"
             fi
@@ -303,7 +303,9 @@ NGINX_CONF
             echo "📌 Current commit:"
             git log -1 --oneline
           EOF
-         f: steps.check_deployment.outputs.FIRST_TIME == 'false'
+          
+      - name: Check for new migrations
+        if: steps.check_deployment.outputs.FIRST_TIME == 'false'
         id: check_migrations
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
@@ -331,8 +333,6 @@ NGINX_CONF
             fi
           EOF
           
-      - name: Run database migrations
-        if: steps.check_deployment.outputs.FIRST_TIME == 'false' &&
       - name: Run database migrations
         if: steps.check_migrations.outputs.HAS_NEW_MIGRATIONS == 'true'
         run: |
