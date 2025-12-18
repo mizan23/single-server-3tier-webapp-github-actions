@@ -1,4 +1,4 @@
-name: Deploy to AWS EC2
+﻿name: Deploy to AWS EC2
 
 on:
   push:
@@ -48,11 +48,25 @@ jobs:
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
           
       - name: Check if this is first-time deployment
+        id: check_deployment
+        run: |
+          FIRST_TIME=$(ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
+            if [ -d "${{ env.DEPLOY_PATH }}" ] && [ -f "${{ env.DEPLOY_PATH }}/backend/.env" ]; then
+              echo "false"
+            else
+              echo "true"
+            fi
+          EOF
+          )
+          echo "FIRST_TIME=$FIRST_TIME" >> $GITHUB_OUTPUT
+          echo "First-time deployment: $FIRST_TIME"
+          
+      - name: Create backup before deployment
         if: steps.check_deployment.outputs.FIRST_TIME == 'false'
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
             set -e
-            echo "🔄 Creating backup before deployment..."
+            echo "Creating backup before deployment..."
             
             BACKUP_DIR="$HOME/bmi_deployments_backup"
             TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -61,17 +75,17 @@ jobs:
             mkdir -p "$BACKUP_DIR"
             
             if [ -d "${{ env.DEPLOY_PATH }}" ]; then
-              echo "📦 Backing up current deployment to ${BACKUP_PATH}"
+              echo "Backing up current deployment to ${BACKUP_PATH}"
               cp -r "${{ env.DEPLOY_PATH }}" "${BACKUP_PATH}"
-              echo "✅ Backup created successfully"
+              echo "Backup created successfully"
             else
-              echo "⚠️  No existing deployment found to backup"
+              echo "No existing deployment found to backup"
             fi
             
             # Keep only last 5 backups
             cd "$BACKUP_DIR"
             ls -t | tail -n +6 | xargs -r rm -rf
-            echo "🧹 Cleaned up old backups (keeping last 5)"
+            echo "Cleaned up old backups (keeping last 5)"
           EOF
           
       - name: Pull latest code from GitHub
@@ -81,17 +95,17 @@ jobs:
             
             # Clone or pull repository
             if [ ! -d "${{ env.DEPLOY_PATH }}" ]; then
-              echo "📥 Cloning repository..."
+              echo "Cloning repository..."
               git clone https://github.com/${{ github.repository }} "${{ env.DEPLOY_PATH }}"
             else
-              echo "🔄 Pulling latest changes..."
+              echo "Pulling latest changes..."
               cd "${{ env.DEPLOY_PATH }}"
               git fetch origin
               git reset --hard origin/main
               git pull origin main
             fi
             
-            echo "✅ Code updated successfully"
+            echo "Code updated successfully"
           EOF
           
       - name: Setup PostgreSQL database (first-time only)
@@ -99,15 +113,15 @@ jobs:
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
             set -e
-            echo "🗄️  Setting up PostgreSQL database..."
+            echo "Setting up PostgreSQL database..."
             
             # Check if database already exists
             DB_EXISTS=$(sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${{ env.DB_NAME }}'" 2>/dev/null || echo "0")
             
             if [ "$DB_EXISTS" = "1" ]; then
-              echo "ℹ️  Database '${{ env.DB_NAME }}' already exists"
+              echo "Database '${{ env.DB_NAME }}' already exists"
             else
-              echo "📦 Creating database and user..."
+              echo "Creating database and user..."
               
               # Create user and database
               sudo -u postgres psql << 'PSQL'
@@ -124,7 +138,7 @@ jobs:
                 ALTER USER ${{ env.DB_USER }} CREATEDB;
               PSQL
               
-              echo "✅ Database created successfully"
+              echo "Database created successfully"
             fi
           EOF
           
@@ -133,10 +147,10 @@ jobs:
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
             set -e
-            echo "📥 Cloning repository..."
+            echo "Cloning repository..."
             
             if [ -d "${{ env.DEPLOY_PATH }}" ]; then
-              echo "⚠️  Directory exists, removing..."
+              echo "Directory exists, removing..."
               rm -rf "${{ env.DEPLOY_PATH }}"
             fi
             
@@ -144,7 +158,7 @@ jobs:
             cd "${{ env.DEPLOY_PATH }}"
             git checkout main
             
-            echo "✅ Repository cloned successfully"
+            echo "Repository cloned successfully"
           EOF
           
       - name: Create backend .env file (first-time only)
@@ -152,16 +166,16 @@ jobs:
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
             set -e
-            echo "⚙️  Creating backend .env file..."
+            echo "Creating backend .env file..."
             
-            cat > "${{ env.DEPLOY_PATH }}/backend/.env" << ENVFILE
-PORT=3000
-DATABASE_URL=postgresql://${{ env.DB_USER }}:${{ secrets.DB_PASSWORD }}@localhost:5432/${{ env.DB_NAME }}
-NODE_ENV=production
-FRONTEND_URL=http://${{ secrets.EC2_HOST }}
-ENVFILE
+            cat > "${{ env.DEPLOY_PATH }}/backend/.env" << 'ENVFILE'
+              PORT=3000
+              DATABASE_URL=postgresql://${{ env.DB_USER }}:${{ secrets.DB_PASSWORD }}@localhost:5432/${{ env.DB_NAME }}
+              NODE_ENV=production
+              FRONTEND_URL=http://${{ secrets.EC2_HOST }}
+            ENVFILE
             
-            echo "✅ Backend .env file created"
+            echo "Backend .env file created"
           EOF
           
       - name: Run database migrations (first-time only)
@@ -169,12 +183,12 @@ ENVFILE
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
             set -e
-            echo "🗄️  Running database migrations..."
+            echo "Running database migrations..."
             
             cd "${{ env.DEPLOY_PATH }}/backend/migrations"
             
             for migration in *.sql; do
-              echo "  ▶️  Applying migration: $migration"
+              echo "  Applying migration: $migration"
               PGPASSWORD="${{ secrets.DB_PASSWORD }}" psql -h localhost -U ${{ env.DB_USER }} -d ${{ env.DB_NAME }} -f "$migration"
             done
             
@@ -182,7 +196,7 @@ ENVFILE
             MIGRATION_TRACKER="$HOME/.bmi_migrations_applied"
             ls *.sql > "$MIGRATION_TRACKER"
             
-            echo "✅ All migrations completed"
+            echo "All migrations completed"
           EOF
           
       - name: Configure Nginx (first-time only)
@@ -190,61 +204,61 @@ ENVFILE
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
             set -e
-            echo "🌐 Configuring Nginx..."
+            echo "Configuring Nginx..."
             
             # Create frontend deployment directory
             sudo mkdir -p ${{ env.FRONTEND_DEPLOY_PATH }}
             
             # Create Nginx configuration
             sudo tee /etc/nginx/sites-available/bmi-health-tracker << 'NGINX_CONF'
-server {
-    listen 80;
-    server_name ${{ secrets.EC2_HOST }};
-    
-    # Frontend - serve static files
-    location / {
-        root ${{ env.FRONTEND_DEPLOY_PATH }};
-        try_files $uri $uri/ /index.html;
-        
-        # Cache static assets
-        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-            expires 1y;
-            add_header Cache-Control "public, immutable";
-        }
-    }
-    
-    # Backend API - reverse proxy
-    location /api/ {
-        proxy_pass http://localhost:3000/api/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
-        proxy_read_timeout 90;
-    }
-    
-    # Health check endpoint
-    location /health {
-        proxy_pass http://localhost:3000/health;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        access_log off;
-    }
-    
-    # Security headers
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    
-    # Logging
-    access_log /var/log/nginx/bmi-access.log;
-    error_log /var/log/nginx/bmi-error.log;
-}
-NGINX_CONF
+            server {
+                listen 80;
+                server_name ${{ secrets.EC2_HOST }};
+                
+                # Frontend - serve static files
+                location / {
+                    root ${{ env.FRONTEND_DEPLOY_PATH }};
+                    try_files $uri $uri/ /index.html;
+                    
+                    # Cache static assets
+                    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+                        expires 1y;
+                        add_header Cache-Control "public, immutable";
+                    }
+                }
+                
+                # Backend API - reverse proxy
+                location /api/ {
+                    proxy_pass http://localhost:3000/api/;
+                    proxy_http_version 1.1;
+                    proxy_set_header Upgrade $http_upgrade;
+                    proxy_set_header Connection 'upgrade';
+                    proxy_set_header Host $host;
+                    proxy_set_header X-Real-IP $remote_addr;
+                    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                    proxy_set_header X-Forwarded-Proto $scheme;
+                    proxy_cache_bypass $http_upgrade;
+                    proxy_read_timeout 90;
+                }
+                
+                # Health check endpoint
+                location /health {
+                    proxy_pass http://localhost:3000/health;
+                    proxy_http_version 1.1;
+                    proxy_set_header Host $host;
+                    access_log off;
+                }
+                
+                # Security headers
+                add_header X-Frame-Options "SAMEORIGIN" always;
+                add_header X-Content-Type-Options "nosniff" always;
+                add_header X-XSS-Protection "1; mode=block" always;
+                
+                # Logging
+                access_log /var/log/nginx/bmi-access.log;
+                error_log /var/log/nginx/bmi-error.log;
+            }
+            NGINX_CONF
             
             # Enable site
             sudo ln -sf /etc/nginx/sites-available/bmi-health-tracker /etc/nginx/sites-enabled/
@@ -254,14 +268,14 @@ NGINX_CONF
             sudo nginx -t
             sudo systemctl reload nginx
             
-            echo "✅ Nginx configured successfully"
+            echo "Nginx configured successfully"
           EOF
           
       - name: Create deployment backup
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
             set -e
-            echo "🔄 Creating backup before deployment..."
+            echo "Creating backup before deployment..."
             
             BACKUP_DIR="$HOME/bmi_deployments_backup"
             TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -270,24 +284,24 @@ NGINX_CONF
             mkdir -p "$BACKUP_DIR"
             
             if [ -d "${{ env.DEPLOY_PATH }}" ]; then
-              echo "📦 Backing up current deployment to ${BACKUP_PATH}"
+              echo "Backing up current deployment to ${BACKUP_PATH}"
               cp -r "${{ env.DEPLOY_PATH }}" "${BACKUP_PATH}"
-              echo "✅ Backup created successfully"
+              echo "Backup created successfully"
             else
-              echo "⚠️  No existing deployment found to backup"
+              echo "No existing deployment found to backup"
             fi
             
             # Keep only last 5 backups
             cd "$BACKUP_DIR"
             ls -t | tail -n +6 | xargs -r rm -rf
-            echo "🧹 Cleaned up old backups (keeping last 5)"
+            echo "Cleaned up old backups (keeping last 5)"
           EOF
           
       - name: Pull latest code from GitHub
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
             set -e
-            echo "📥 Pulling latest code from GitHub..."
+            echo "Pulling latest code from GitHub..."
             
             cd ${{ env.DEPLOY_PATH }}
             
@@ -297,10 +311,10 @@ NGINX_CONF
             # Pull latest code
             git pull origin main
             
-            echo "✅ Code updated successfully"
+            echo "Code updated successfully"
             
             # Show current commit
-            echo "📌 Current commit:"
+            echo "Current commit:"
             git log -1 --oneline
           EOF
           
@@ -338,7 +352,7 @@ NGINX_CONF
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
             set -e
-            echo "🗄️  Running new database migrations..."
+            echo "Running new database migrations..."
             
             cd ${{ env.DEPLOY_PATH }}/backend/migrations
             
@@ -357,20 +371,20 @@ NGINX_CONF
             # Run each new migration
             for migration in *.sql; do
               if ! grep -q "$migration" "$MIGRATION_TRACKER"; then
-                echo "  ▶️  Applying migration: $migration"
+                echo "  Applying migration: $migration"
                 PGPASSWORD="$DB_PASS" psql -h localhost -U "$DB_USER" -d "$DB_NAME" -f "$migration"
                 
                 if [ $? -eq 0 ]; then
                   echo "$migration" >> "$MIGRATION_TRACKER"
-                  echo "  ✅ Migration $migration applied successfully"
+                  echo "  Migration $migration applied successfully"
                 else
-                  echo "  ❌ Migration $migration failed!"
+                  echo "  Migration $migration failed!"
                   exit 1
                 fi
               fi
             done
             
-            echo "✅ All migrations completed successfully"
+            echo "All migrations completed successfully"
           EOF
           
       - name: Deploy Backend
@@ -378,7 +392,7 @@ NGINX_CONF
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
             set -e
-            echo "🚀 Deploying backend..."
+            echo "Deploying backend..."
             
             cd ${{ env.DEPLOY_PATH }}/backend
             
@@ -387,17 +401,17 @@ NGINX_CONF
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
             
             # Install dependencies
-            echo "📦 Installing backend dependencies..."
+            echo "Installing backend dependencies..."
             npm install --production
             
             # Restart PM2 process
-            echo "🔄 Restarting backend with PM2..."
+            echo "Restarting backend with PM2..."
             pm2 restart bmi-backend || pm2 start ecosystem.config.js
             
             # Save PM2 configuration
             pm2 save
             
-            echo "✅ Backend deployed successfully"
+            echo "Backend deployed successfully"
           EOF
           
       - name: Deploy Frontend
@@ -405,7 +419,7 @@ NGINX_CONF
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
             set -e
-            echo "🎨 Deploying frontend..."
+            echo "Deploying frontend..."
             
             cd ${{ env.DEPLOY_PATH }}/frontend
             
@@ -414,15 +428,15 @@ NGINX_CONF
             [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
             
             # Install dependencies
-            echo "📦 Installing frontend dependencies..."
+            echo "Installing frontend dependencies..."
             npm install
             
             # Build production bundle
-            echo "🔨 Building frontend..."
+            echo "Building frontend..."
             npm run build
             
             # Deploy to Nginx directory
-            echo "📤 Deploying to Nginx..."
+            echo "Deploying to Nginx..."
             sudo rm -rf ${{ env.FRONTEND_DEPLOY_PATH }}/*
             sudo cp -r dist/* ${{ env.FRONTEND_DEPLOY_PATH }}/
             
@@ -430,7 +444,7 @@ NGINX_CONF
             sudo chown -R www-data:www-data ${{ env.FRONTEND_DEPLOY_PATH }}
             sudo chmod -R 755 ${{ env.FRONTEND_DEPLOY_PATH }}
             
-            echo "✅ Frontend deployed successfully"
+            echo "Frontend deployed successfully"
           EOF
           
       - name: Verify deployment health
@@ -438,43 +452,43 @@ NGINX_CONF
         run: |
           ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'EOF'
             set -e
-            echo "🏥 Running health checks..."
+            echo "Running health checks..."
             
             # Wait for backend to be fully ready
             sleep 5
             
             # Check PM2 process status
-            echo "📊 PM2 Status:"
+            echo "PM2 Status:"
             pm2 status bmi-backend
             
             # Check if backend is responding
-            echo "🔍 Checking backend health endpoint..."
+            echo "Checking backend health endpoint..."
             HEALTH_CHECK=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/health)
             
             if [ "$HEALTH_CHECK" = "200" ]; then
-              echo "✅ Backend health check passed (HTTP $HEALTH_CHECK)"
+              echo "Backend health check passed (HTTP $HEALTH_CHECK)"
             else
-              echo "❌ Backend health check failed (HTTP $HEALTH_CHECK)"
-              echo "🔄 Attempting rollback..."
+              echo "Backend health check failed (HTTP $HEALTH_CHECK)"
+              echo "Attempting rollback..."
               pm2 restart bmi-backend
               sleep 3
               exit 1
             fi
             
             # Check Nginx status
-            echo "🌐 Checking Nginx status..."
+            echo "Checking Nginx status..."
             sudo systemctl status nginx --no-pager || true
             
             # Check if frontend is accessible
             FRONTEND_CHECK=$(curl -s -o /dev/null -w "%{http_code}" http://localhost/)
             
             if [ "$FRONTEND_CHECK" = "200" ]; then
-              echo "✅ Frontend health check passed (HTTP $FRONTEND_CHECK)"
+              echo "Frontend health check passed (HTTP $FRONTEND_CHECK)"
             else
-              echo "⚠️  Frontend health check returned HTTP $FRONTEND_CHECK"
+              echo "Frontend health check returned HTTP $FRONTEND_CHECK"
             fi
             
-            echo "✅ Deployment health checks completed"
+            echo "Deployment health checks completed"
           EOF
           
       - name: Display deployment info
@@ -483,17 +497,17 @@ NGINX_CONF
             set -e
             echo ""
             echo "═══════════════════════════════════════════════════"
-            echo "🎉 Deployment Completed Successfully!"
+            echo "Deployment Completed Successfully!"
             echo "═══════════════════════════════════════════════════"
             echo ""
-            echo "📍 Application URL: http://${{ secrets.EC2_HOST }}"
+            echo "Application URL: http://${{ secrets.EC2_HOST }}"
             echo ""
-            echo "📌 Current Git Commit:"
+            echo "Current Git Commit:"
             cd ${{ env.DEPLOY_PATH }}
             git log -1 --pretty=format:"   %h - %s (%an, %ar)"
             echo ""
             echo ""
-            echo "🔧 Backend Status:"
+            echo "Backend Status:"
             pm2 info bmi-backend | grep -E "status|uptime|memory|restarts" || true
             echo ""
             echo "═══════════════════════════════════════════════════"
@@ -502,7 +516,7 @@ NGINX_CONF
       - name: Deployment Summary
         if: always()
         run: |
-          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Target Server:** ${{ secrets.EC2_HOST }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Deployment Time:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
@@ -511,11 +525,11 @@ NGINX_CONF
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [ "${{ job.status }}" = "success" ]; then
-            echo "### ✅ Deployment Successful" >> $GITHUB_STEP_SUMMARY
+            echo "### Deployment Successful" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "🌐 **Application URL:** http://${{ secrets.EC2_HOST }}" >> $GITHUB_STEP_SUMMARY
+            echo "**Application URL:** http://${{ secrets.EC2_HOST }}" >> $GITHUB_STEP_SUMMARY
           else
-            echo "### ❌ Deployment Failed" >> $GITHUB_STEP_SUMMARY
+            echo "### Deployment Failed" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "Please check the logs above for error details." >> $GITHUB_STEP_SUMMARY
           fi
