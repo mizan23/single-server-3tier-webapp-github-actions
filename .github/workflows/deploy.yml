@@ -258,28 +258,29 @@ jobs:
             # Configure Nginx if needed
             if [ ! -f /etc/nginx/sites-available/bmi-health-tracker ]; then
               echo "Creating Nginx configuration..."
-              echo "server {" | sudo tee /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "    listen 80;" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "    server_name _;" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "    root /var/www/bmi-health-tracker;" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "    index index.html;" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "    location / {" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "        try_files \$uri \$uri/ /index.html;" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "    }" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "    location /api/ {" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "        proxy_pass http://127.0.0.1:3000/api/;" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "        proxy_http_version 1.1;" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "        proxy_set_header Upgrade \$http_upgrade;" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "        proxy_set_header Connection 'upgrade';" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "        proxy_set_header Host \$host;" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "        proxy_cache_bypass \$http_upgrade;" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "        proxy_set_header X-Real-IP \$remote_addr;" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "    }" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
-              echo "}" | sudo tee -a /etc/nginx/sites-available/bmi-health-tracker > /dev/null
+              printf '%s\n' \
+                'server {' \
+                '    listen 80;' \
+                '    server_name _;' \
+                '' \
+                '    root /var/www/bmi-health-tracker;' \
+                '    index index.html;' \
+                '' \
+                '    location / {' \
+                '        try_files $uri $uri/ /index.html;' \
+                '    }' \
+                '' \
+                '    location /api/ {' \
+                '        proxy_pass http://127.0.0.1:3000/api/;' \
+                '        proxy_http_version 1.1;' \
+                '        proxy_set_header Upgrade $http_upgrade;' \
+                '        proxy_set_header Connection '"'"'upgrade'"'"';' \
+                '        proxy_set_header Host $host;' \
+                '        proxy_cache_bypass $http_upgrade;' \
+                '        proxy_set_header X-Real-IP $remote_addr;' \
+                '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' \
+                '    }' \
+                '}' | sudo tee /etc/nginx/sites-available/bmi-health-tracker > /dev/null
               
               sudo ln -sf /etc/nginx/sites-available/bmi-health-tracker /etc/nginx/sites-enabled/
               sudo rm -f /etc/nginx/sites-enabled/default
