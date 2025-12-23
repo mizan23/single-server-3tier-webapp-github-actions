@@ -54,9 +54,7 @@ jobs:
 
     - name: Test SSH Connection
       run: |
-        ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << 'ENDSSH'
-          echo 'SSH connection successful'
-        ENDSSH
+        ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "echo 'SSH connection successful'"
 
     - name: Get Runner Public IP
       run: |
@@ -66,7 +64,8 @@ jobs:
         RUNNER_IP=$(curl -s http://api.ipify.org/?format=text)
         echo "Runner Public IP: $RUNNER_IP"
         echo "runner_ip=$RUNNER_IP" >> $GITHUB_OUTPUT
-
+        
+        
     - name: Install Prerequisites (if needed)
       run: |
         ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} << "ENDSSH"
@@ -272,9 +271,11 @@ jobs:
             
             # Setup environment variables
             echo "Setting up environment variables..."
-            echo "DATABASE_URL=postgresql://${{ env.DB_USER }}:${{ secrets.DB_PASSWORD }}@localhost:5432/${{ env.DB_NAME }}" > .env
-            echo "NODE_ENV=production" >> .env
-            echo "PORT=3000" >> .env
+            cat > .env << 'ENVEOF'
+          DATABASE_URL=postgresql://${{ env.DB_USER }}:${{ secrets.DB_PASSWORD }}@localhost:5432/${{ env.DB_NAME }}
+          NODE_ENV=production
+          PORT=3000
+ENVEOF
             
             # Run migrations if they exist
             if [ -d "migrations" ]; then
