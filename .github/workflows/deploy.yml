@@ -39,7 +39,7 @@ jobs:
     - name: Setup SSH
       uses: webfactory/ssh-agent@v0.9.0
       with:
-        ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+        ssh-private-key: ${{ secrets.SSH_KEY }}
         log-public-key: true
 
     - name: Configure SSH to skip host key checking
